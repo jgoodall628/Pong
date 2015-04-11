@@ -275,7 +275,7 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
     BottomRight = DetermineNewTile(BottomRight, TileMap);
     
     
-        //GetVelocity(ddPos, TargetSPF, GameState->Player.Velocity);
+        GetVelocity(ddPos, TargetSPF, GameState->Player.Velocity);
     
     bool Collided = false;
     relative_position CollideP = {};
