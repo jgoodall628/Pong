@@ -10,7 +10,7 @@
 
 static int RoundToInt(float X)
 {
-    int Result = (int)roundf(X);
+    int Result = (int)round(X);
     return Result;
 }
 static int FloorFloat(float X)
@@ -92,14 +92,13 @@ static void RenderGradient(game_screen_buffer *GameScreenBuffer, int BlueOffset,
 }
 
 
-static void DrawRectangle(vect2 leftbottom, vect2 Dimensions, game_screen_buffer *GameScreenBuffer, int color)
+static void DrawRectangle(float left, float right, float top, float bottom, game_screen_buffer *GameScreenBuffer, int color)
 {
-    vect2 Min = leftbottom;
-    vect2 Max = leftbottom + Dimensions;
-    int MinX = RoundToInt(Min.X);
-    int MinY = RoundToInt(Min.Y);
-    int MaxX = RoundToInt(Max.X);
-    int MaxY = RoundToInt(Max.Y);
+    
+    int MinX = RoundToInt(left);
+    int MinY = RoundToInt(top);
+    int MaxX = RoundToInt(right);
+    int MaxY = RoundToInt(bottom);
  
 
     if(MinX < 0)
@@ -153,11 +152,17 @@ static void DrawTileMap (tile_map TileMap, game_screen_buffer *GameScreenBuffer)
             X < TileMap.TileCount.X;
             ++X)
         {
-            if(TileMap.map[(int32_t)(X + Y*TileMap.TileCount.X)] == 1)
+            if(TileMap.map[X + Y*TileMap.TileCount.X] == 1)
             {
-                vect2 TileLeftBottom = {X*TileMap.TileDimensions.X, Y*TileMap.TileDimensions.Y};
-                DrawRectangle(TileLeftBottom,
-                              TileMap.TileDimensions,
+                float left = X*TileMap.TileDimensions.X;
+                float right = left + TileMap.TileDimensions.X;
+                float bottom = GameScreenBuffer->Height - Y*TileMap.TileDimensions.Y;
+                float top = bottom - TileMap.TileDimensions.Y;
+                
+                DrawRectangle(left,
+                              right,
+                              top,
+                              bottom,                       
                               GameScreenBuffer, 0x00FF0000);
             }
         }
@@ -167,13 +172,13 @@ static void DrawTileMap (tile_map TileMap, game_screen_buffer *GameScreenBuffer)
 static relative_position DetermineNewTile(relative_position RelativePosition, tile_map TileMap)
 {
  
-    int TileChangeX = FloorFloat(RelativePosition.relcoord.X/TileMap.TileDimensions.X);
+    int TileChangeX = RoundToInt(RelativePosition.relcoord.X/TileMap.TileDimensions.X);
     RelativePosition.Tilecoord.X += TileChangeX;
-    RelativePosition. relcoord.X -= TileChangeX*(int)TileMap.TileDimensions.X;
+    RelativePosition. relcoord.X -= 0.5f*TileChangeX*(int)TileMap.TileDimensions.X;
 
-    int TileChangeY = FloorFloat(RelativePosition.relcoord.Y/TileMap.TileDimensions.Y);
+    int TileChangeY = RoundToInt(RelativePosition.relcoord.Y/TileMap.TileDimensions.Y);
     RelativePosition.Tilecoord.Y += TileChangeY;
-    RelativePosition. relcoord.Y -= TileChangeY*TileMap.TileDimensions.Y;
+    RelativePosition. relcoord.Y -= 0.5f*TileChangeY*TileMap.TileDimensions.Y;
     return RelativePosition;
     
 }
@@ -181,7 +186,7 @@ static bool TileIsEmpty(tile_map TileMap, relative_position RelativePosition)
 {
     
     if(TileMap.map[RelativePosition.Tilecoord.X +
-                             TileMap.TileCount.X*RelativePosition.Tilecoord.Y ] == 1)
+                   TileMap.TileCount.X*RelativePosition.Tilecoord.Y ] == 1)
     {
         return false;
     }
@@ -192,7 +197,7 @@ static bool TileIsEmpty(tile_map TileMap, relative_position RelativePosition)
     
 }
 
-static relative_position GetPlayerBottomRight(player Player, tile_map TileMap)
+static relative_position GetPlayerTopRight(player Player, tile_map TileMap)
 {
     
     relative_position Result = Player.Position;
@@ -205,18 +210,32 @@ static relative_position GetPlayerBottomRight(player Player, tile_map TileMap)
 }
 static void DEBUGDrawContainerTile(relative_position RelativePosition, tile_map TileMap, game_screen_buffer *GameScreenBuffer)
 {
-    vect2 TileLeftBottom = {RelativePosition.Tilecoord.X*TileMap.TileDimensions.X,
-                            RelativePosition.Tilecoord.Y*TileMap.TileDimensions.Y};
-    DrawRectangle(TileLeftBottom,
-                  TileMap.TileDimensions,
-                  GameScreenBuffer, 0x00FFFF00);
+    float left = RelativePosition.Tilecoord.X*TileMap.TileDimensions.X;
+    float right = left + TileMap.TileDimensions.X;
+    float bottom = GameScreenBuffer->Height - RelativePosition.Tilecoord.Y*TileMap.TileDimensions.Y;
+    float top = bottom - TileMap.TileDimensions.Y;
+    
+    DrawRectangle(left,
+                  right,
+                  top,
+                  bottom,                       
+                  GameScreenBuffer, 0x0000FFFF);
+   
 }
 inline void DrawPlayer(player Player,tile_map TileMap, game_screen_buffer *GameScreenBuffer)
 {
-    vect2 PixelPosition = GetPixelPositionFromRelativePosition(Player.Position,
-                                                               TileMap);
-    DrawRectangle(PixelPosition,
-                  Player.Dimensions,
+    float left = Player.Position.Tilecoord.X*TileMap.TileDimensions.X +
+        Player.Position.relcoord.X + 0.5f*TileMap.TileDimensions.X;
+    float right = left + Player.Dimensions.X;
+    float bottom = GameScreenBuffer->Height - Player.Position.Tilecoord.Y*TileMap.TileDimensions.Y
+        - Player.Position.relcoord.Y - 0.5f*TileMap.TileDimensions.Y;
+    float top = bottom - Player.Dimensions.Y;
+  
+
+    DrawRectangle(left,
+                  right,
+                  top,
+                  bottom,                       
                   GameScreenBuffer, 0x0000FF00);
 
 }
@@ -237,11 +256,11 @@ static vect2 GetPlayerAcceleration(game_controller_input KeyboardController)
     vect2 ddPos = {};
     if(KeyboardController.MoveUp.EndedDown)
     {
-        ddPos.Y = -1;
+        ddPos.Y = 1;
     }
     if(KeyboardController.MoveDown.EndedDown)
     {
-        ddPos.Y = 1;
+        ddPos.Y = -1;
     }
     if(KeyboardController.MoveLeft.EndedDown)
     {
@@ -251,7 +270,7 @@ static vect2 GetPlayerAcceleration(game_controller_input KeyboardController)
     {
         ddPos.X = 1;
     }
-    float PlayerAcceleration = 40.0f;
+    float PlayerAcceleration = 100;
     ddPos *= PlayerAcceleration;
     
 
@@ -261,21 +280,30 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
 {
     
     vect2 ddPos = GetPlayerAcceleration(KeyboardController);
-    //ddPos = ddPos - 1.5*GameState->Player.Velocity;
-   GameState->Player.Velocity = ddPos;
-    vect2 PosDiff = GetPositionDiff({0, 0}, TargetSPF,
-                            GameState->Player.Velocity);
+    vect2 Friction = 1.5*GameState->Player.Velocity;
+    ddPos = ddPos - Friction;
+    GameState->Player.Velocity = GetVelocity(ddPos, TargetSPF, GameState->Player.Velocity);
+
+    vect2 PosDiff = GetPositionDiff(ddPos, TargetSPF,
+                                    GameState->Player.Velocity);
     
+
+    /* vect2 ddPos = GetPlayerAcceleration(KeyboardController);
+     
+     vect2 PosDiff = GetPositionDiff({0, 0}, TargetSPF,
+                                     GameState->Player.Velocity);
+     GameState->Player.Velocity = ddPos;
+    */
     relative_position NewPosition = GameState->Player.Position;
     NewPosition.relcoord += PosDiff;
     NewPosition = DetermineNewTile(NewPosition, TileMap);
+   
+    relative_position TopRight = NewPosition;
+    TopRight.relcoord += GameState->Player.Dimensions;
+    TopRight = DetermineNewTile(TopRight, TileMap);
     
-    relative_position BottomRight = GetPlayerBottomRight(GameState->Player, TileMap);
-    BottomRight.relcoord += PosDiff;
-    BottomRight = DetermineNewTile(BottomRight, TileMap);
     
     
-    //GetVelocity(ddPos, TargetSPF, GameState->Player.Velocity);
     
     bool Collided = false;
     relative_position CollideP = {};
@@ -285,32 +313,16 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
         Collided = true;
                                                                                
     }
-    if(!TileIsEmpty(TileMap, BottomRight))
+    if(!TileIsEmpty(TileMap, TopRight))
     {
-        CollideP = BottomRight;
+        CollideP = TopRight;
         Collided = true;
     }
 
     if(Collided)
     {
-        /*vect2 WallVector = {0, 0};
-        if(KeyboardController.MoveUp.EndedDown)
-        {
-            WallVector = {0, 1};
-        }
-        if(KeyboardController.MoveDown.EndedDown)
-        {
-            WallVector = {0, -1};
-        }
-        if(KeyboardController.MoveLeft.EndedDown)
-        {
-            WallVector = {1, 0};
-        }
-        if(KeyboardController.MoveRight.EndedDown)
-        {
-            WallVector = {-1, 0};
-        }
-        /*if(CollideP.Tilecoord.X  < GameState->Player.Position.Tilecoord.X)
+        vect2 WallVector = {0, 0};
+        if(CollideP.Tilecoord.X  < GameState->Player.Position.Tilecoord.X)
         {
             WallVector = {1, 0};
         }
@@ -327,16 +339,13 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
             WallVector = {0, -1};
         }
         
-        GameState->Player.Velocity = GameState->Player.Velocity - 2*DotProduct(GameState->Player.Velocity,
+        GameState->Player.Velocity = GameState->Player.Velocity - 1*DotProduct(GameState->Player.Velocity,
                                                                              WallVector)*WallVector;
-        */
+       
     }
     else
     {
-        Assert(BottomRight.Tilecoord.Y != 9);
         GameState->Player.Position = NewPosition;
-        Assert(BottomRight.Tilecoord.Y != 9)
-        
     }
      
 }
@@ -344,14 +353,13 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
 
 static void GameUpdateRender(game_sound_data GameSoundData, game_screen_buffer GameScreenBuffer, game_controller_input KeyboardController, game_memory *Memory, float TargetSPF)
 {
-    //SineWave(&GameSoundData, KeyboardController);
-    //RenderGradient(&GameScreenBuffer, 0, 0, KeyboardController);
+
     game_state *GameState = (game_state *)Memory->PermanentStorage;
-    vect2 ScreenOffset = {0, 0};
-    vect2 ScreenDimensions = {(float)GameScreenBuffer.Width,
-                              (float)GameScreenBuffer.Height};
-    DrawRectangle(ScreenOffset,
-                  ScreenDimensions,
+    
+    DrawRectangle(0,
+                  (float)GameScreenBuffer.Width,
+                  0,
+                  (float)GameScreenBuffer.Height,
                   &GameScreenBuffer, 0xFF000000);
    
     int map[10][10]= {{1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
@@ -362,7 +370,7 @@ static void GameUpdateRender(game_sound_data GameSoundData, game_screen_buffer G
                       {1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                       {1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                       {1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-                      {1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                      {1, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                       {1, 1, 1, 1, 1, 1, 1, 1, 1, 1}};                          
                     
  
@@ -394,8 +402,6 @@ static void GameUpdateRender(game_sound_data GameSoundData, game_screen_buffer G
     
     
 
-    /* DrawRectangle(KeyboardController.Mouse.MouseX, KeyboardController.Mouse.MouseY,
-       10, 10, &GameScreenBuffer, 0x00FF0000);
-    */
+  
     
 }
