@@ -174,11 +174,11 @@ static relative_position DetermineNewTile(relative_position RelativePosition, ti
  
     int TileChangeX = RoundToInt(RelativePosition.relcoord.X/TileMap.TileDimensions.X);
     RelativePosition.Tilecoord.X += TileChangeX;
-    RelativePosition. relcoord.X -= 0.5f*TileChangeX*(int)TileMap.TileDimensions.X;
+    RelativePosition. relcoord.X -= TileChangeX*(int)TileMap.TileDimensions.X;
 
     int TileChangeY = RoundToInt(RelativePosition.relcoord.Y/TileMap.TileDimensions.Y);
     RelativePosition.Tilecoord.Y += TileChangeY;
-    RelativePosition. relcoord.Y -= 0.5f*TileChangeY*TileMap.TileDimensions.Y;
+    RelativePosition. relcoord.Y -= TileChangeY*TileMap.TileDimensions.Y;
     return RelativePosition;
     
 }
@@ -236,7 +236,7 @@ inline void DrawPlayer(player Player,tile_map TileMap, game_screen_buffer *GameS
                   right,
                   top,
                   bottom,                       
-                  GameScreenBuffer, 0x0000FF00);
+                  GameScreenBuffer, Player.color);
 
 }
 static vect2 GetPositionDiff(vect2 ddPos, float TargetSPF, vect2 Vzero)
@@ -349,6 +349,104 @@ static void MovePlayer(game_controller_input KeyboardController, game_state *Gam
     }
      
 }
+static bool ObjectCollision(player Player, relative_position BallPosition, tile_map TileMap)
+{
+    bool Result = false;
+    float BallX = BallPosition.Tilecoord.X*TileMap.TileDimensions.X + BallPosition.relcoord.X + 0.5f*TileMap.TileDimensions.X;
+    float PlayerX = Player.Position.Tilecoord.X*TileMap.TileDimensions.X +
+        Player.Position.relcoord.X + 0.5f*TileMap.TileDimensions.X + Player.Dimensions.X;
+    float BallY = BallPosition.Tilecoord.Y*TileMap.TileDimensions.Y + BallPosition.relcoord.Y + 0.5f*TileMap.TileDimensions.Y;
+    float PlayerHighY = Player.Position.Tilecoord.Y*TileMap.TileDimensions.Y +
+        Player.Position.relcoord.Y + 0.5f*TileMap.TileDimensions.Y + Player.Dimensions.Y;
+    float PlayerLowY = Player.Position.Tilecoord.Y*TileMap.TileDimensions.Y +
+        Player.Position.relcoord.Y + 0.5f*TileMap.TileDimensions.Y;
+
+        if((BallX < PlayerX) && (BallY <= PlayerHighY) && (BallY >= PlayerLowY))
+    {
+        Result = true;
+    }
+    return Result;
+}
+static void MoveBall(player *Ball, tile_map TileMap,
+                     float TargetSPF, player Player)
+{
+    vect2 ddPos = {0, 0};
+    vect2 Friction = {0, 0};
+    ddPos = ddPos - Friction;
+    Ball->Velocity = GetVelocity(ddPos, TargetSPF, Ball->Velocity);
+
+    vect2 PosDiff = GetPositionDiff(ddPos, TargetSPF,
+                                    Ball->Velocity);
+    relative_position NewPosition = Ball->Position;
+    NewPosition.relcoord += PosDiff;
+    NewPosition = DetermineNewTile(NewPosition, TileMap);
+   
+    relative_position TopRight = NewPosition;
+    TopRight.relcoord += Ball->Dimensions;
+    TopRight = DetermineNewTile(TopRight, TileMap);
+    
+    
+    
+    
+    bool Collided = false;
+    bool PlayerCollision = false;
+    relative_position CollideP = {};
+    if(!TileIsEmpty(TileMap, NewPosition))
+    {
+        CollideP = NewPosition;
+        Collided = true;
+                                                                               
+    }
+    if(!TileIsEmpty(TileMap, TopRight))
+    {
+        CollideP = TopRight;
+        Collided = true;
+    }
+    if(ObjectCollision(Player, NewPosition, TileMap))
+    {
+        CollideP = NewPosition;
+        Collided = true;
+        PlayerCollision = true;
+    }
+        
+    
+    
+
+    if(Collided)
+    {
+        vect2 WallVector = {0, 0};
+        if(PlayerCollision)
+        {
+            WallVector = {1, 0};
+        }
+            
+        if(CollideP.Tilecoord.X  < Ball->Position.Tilecoord.X)
+        {
+            WallVector = {1, 0};
+        }
+        if(CollideP.Tilecoord.X  > Ball->Position.Tilecoord.X)
+        {
+            WallVector = {-1, 0};
+        }
+        if(CollideP.Tilecoord.Y  < Ball->Position.Tilecoord.Y)
+        {
+            WallVector = {0, 1};
+        }
+        if(CollideP.Tilecoord.Y  > Ball->Position.Tilecoord.Y)
+        {
+            WallVector = {0, -1};
+        }
+        
+        Ball->Velocity = Ball->Velocity - 2*DotProduct(Ball->Velocity,
+                                                     WallVector)*WallVector;
+       
+    }
+    else
+    {
+        Ball->Position = NewPosition;
+    }
+
+}
 
 
 static void GameUpdateRender(game_sound_data GameSoundData, game_screen_buffer GameScreenBuffer, game_controller_input KeyboardController, game_memory *Memory, float TargetSPF)
@@ -390,15 +488,26 @@ static void GameUpdateRender(game_sound_data GameSoundData, game_screen_buffer G
         GameState->Player.Position.Tilecoord = {1, 1};
         GameState->Player.Position.relcoord = {0,0};
         GameState->Player.Dimensions = {10, 100};
+        GameState->Player.color = 0x0000FF00;
+        GameState->Ball = {};
+        GameState->Ball.Position.Tilecoord = {5, 5};
+        GameState->Ball.Position.relcoord = {0, 0};
+        GameState->Ball.Dimensions = {10, 10};
+        GameState->Ball.color = 0x00FFFF00;
+        GameState->Ball.Velocity = {50, 40};
+        
         Memory->IsInitialized = true;
     }
     MovePlayer(KeyboardController, GameState, TileMap, TargetSPF);
-   
+    MoveBall(&GameState->Ball, TileMap, TargetSPF, GameState->Player);
   
     DrawTileMap(TileMap, &GameScreenBuffer);
     DEBUGDrawContainerTile(GameState->Player.Position, TileMap, &GameScreenBuffer);
-    
+    //DEBUGDrawContainerTile(GameState->Ball.Position, TileMap, &GameScreenBuffer);
+
+   
     DrawPlayer(GameState->Player,TileMap, &GameScreenBuffer);
+    DrawPlayer(GameState->Ball,TileMap, &GameScreenBuffer);
     
     
 

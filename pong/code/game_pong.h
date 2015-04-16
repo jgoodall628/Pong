@@ -57,6 +57,7 @@ struct player
     relative_position Position;
     vect2 Dimensions;
     vect2 Velocity;
+    int color;
 };
 struct game_controller_input
 {
@@ -76,6 +77,7 @@ struct game_controller_input
 struct game_state
 {
     player Player;
+    player Ball;
 };
 struct game_memory
 {
